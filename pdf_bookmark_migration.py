@@ -94,6 +94,134 @@ def apply_links(doc: fitz.Document, links_by_page: dict[int, list]) -> tuple[int
     return applied, skipped
 
 
+COORD_TOLERANCE = 1.0  # 座標の許容誤差 (ポイント)
+
+
+def _rect_close(r1: fitz.Rect, r2: fitz.Rect, tol: float = COORD_TOLERANCE) -> bool:
+    """2つの矩形が許容誤差内で一致するか判定する。"""
+    return (
+        abs(r1.x0 - r2.x0) <= tol
+        and abs(r1.y0 - r2.y0) <= tol
+        and abs(r1.x1 - r2.x1) <= tol
+        and abs(r1.y1 - r2.y1) <= tol
+    )
+
+
+def verify_migration(
+    source_path: str,
+    output_path: str,
+    copy_bookmarks: bool,
+    copy_links: bool,
+) -> dict:
+    """出力PDFを再度開き、ソースPDFと照合して移行結果を検証する。
+
+    Returns:
+        {
+            "valid": bool,
+            "errors": [str, ...],
+            "bookmarks_verified": int,
+            "links_verified": int,
+        }
+    """
+    src_doc = fitz.open(source_path)
+    out_doc = fitz.open(output_path)
+    errors = []
+    bookmarks_verified = 0
+    links_verified = 0
+    max_page = len(out_doc)
+
+    # --- しおり検証 ---
+    if copy_bookmarks:
+        src_toc = src_doc.get_toc(simple=False)
+        out_toc = out_doc.get_toc(simple=False)
+
+        # ソース側で範囲内のしおりだけを期待値とする
+        expected_toc = [e for e in src_toc if 1 <= e[2] <= max_page]
+
+        if len(out_toc) != len(expected_toc):
+            errors.append(
+                f"しおり件数不一致: 期待 {len(expected_toc)} 件, 実際 {len(out_toc)} 件"
+            )
+        else:
+            for i, (exp, act) in enumerate(zip(expected_toc, out_toc)):
+                mismatches = []
+                if exp[0] != act[0]:
+                    mismatches.append(f"階層 {exp[0]}→{act[0]}")
+                if exp[1] != act[1]:
+                    mismatches.append(f"タイトル '{exp[1]}'→'{act[1]}'")
+                if exp[2] != act[2]:
+                    mismatches.append(f"ページ {exp[2]}→{act[2]}")
+                if mismatches:
+                    errors.append(f"しおり[{i+1}] {', '.join(mismatches)}")
+                else:
+                    bookmarks_verified += 1
+
+    # --- リンク検証 ---
+    if copy_links:
+        for page_idx in range(min(len(src_doc), max_page)):
+            src_links = src_doc[page_idx].get_links()
+            out_links = out_doc[page_idx].get_links()
+
+            # ソース側で範囲内の内部リンクだけを期待値とする
+            expected_links = []
+            for lnk in src_links:
+                if lnk.get("kind") == fitz.LINK_GOTO:
+                    dest_page = lnk.get("page", -1)
+                    if dest_page < 0 or dest_page >= max_page:
+                        continue
+                expected_links.append(lnk)
+
+            if len(out_links) != len(expected_links):
+                errors.append(
+                    f"ページ{page_idx+1} リンク件数不一致: "
+                    f"期待 {len(expected_links)} 件, 実際 {len(out_links)} 件"
+                )
+                continue
+
+            for j, (exp, act) in enumerate(zip(expected_links, out_links)):
+                mismatches = []
+
+                # 矩形位置
+                exp_rect = fitz.Rect(exp.get("from", fitz.Rect()))
+                act_rect = fitz.Rect(act.get("from", fitz.Rect()))
+                if not _rect_close(exp_rect, act_rect):
+                    mismatches.append(
+                        f"位置 ({exp_rect.x0:.1f},{exp_rect.y0:.1f})-({exp_rect.x1:.1f},{exp_rect.y1:.1f})"
+                        f"→({act_rect.x0:.1f},{act_rect.y0:.1f})-({act_rect.x1:.1f},{act_rect.y1:.1f})"
+                    )
+
+                # リンク種別
+                if exp.get("kind") != act.get("kind"):
+                    mismatches.append(f"種別 {exp.get('kind')}→{act.get('kind')}")
+
+                # 内部リンク: リンク先ページ
+                elif exp.get("kind") == fitz.LINK_GOTO:
+                    if exp.get("page") != act.get("page"):
+                        mismatches.append(f"リンク先ページ {exp.get('page')}→{act.get('page')}")
+
+                # URLリンク: URL文字列
+                elif exp.get("kind") == fitz.LINK_URI:
+                    if exp.get("uri") != act.get("uri"):
+                        mismatches.append(f"URL '{exp.get('uri')}'→'{act.get('uri')}'")
+
+                if mismatches:
+                    errors.append(
+                        f"ページ{page_idx+1} リンク[{j+1}] {', '.join(mismatches)}"
+                    )
+                else:
+                    links_verified += 1
+
+    src_doc.close()
+    out_doc.close()
+
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "bookmarks_verified": bookmarks_verified,
+        "links_verified": links_verified,
+    }
+
+
 def migrate_pdf_bookmarks_and_links(
     source_path: str,
     dest_path: str,
@@ -138,6 +266,12 @@ def migrate_pdf_bookmarks_and_links(
     dst_doc.close()
     src_doc.close()
 
+    # 検証: 出力PDFを再度開いてソースと照合
+    verification = verify_migration(
+        source_path, output_path, copy_bookmarks, copy_links
+    )
+    stats["verification"] = verification
+
     return stats
 
 
@@ -152,6 +286,18 @@ def print_stats(stats: dict) -> None:
         print(f" ({stats['links_skipped']} 件スキップ)")
     else:
         print()
+
+    v = stats.get("verification", {})
+    if v:
+        bm_ok = v.get("bookmarks_verified", 0)
+        ln_ok = v.get("links_verified", 0)
+        if v.get("valid"):
+            print(f"検証:      OK (しおり {bm_ok} 件, リンク {ln_ok} 件 一致)")
+        else:
+            print(f"検証:      NG")
+            for err in v.get("errors", []):
+                print(f"  - {err}")
+
     print("================================")
 
 
