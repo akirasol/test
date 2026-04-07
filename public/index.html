@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Bookmark & Link Migration</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>PDF Bookmark & Link Migration</h1>
+    <p class="subtitle">PDFのしおりとリンクを別のPDFにコピーします</p>
+
+    <form id="migrate-form">
+      <div class="upload-group">
+        <label for="source">コピー元 PDF (Source)</label>
+        <div class="file-drop" id="source-drop">
+          <input type="file" id="source" name="source" accept=".pdf" required>
+          <span class="file-placeholder">ファイルを選択またはドラッグ&ドロップ</span>
+          <span class="file-name" id="source-name"></span>
+        </div>
+      </div>
+
+      <div class="upload-group">
+        <label for="dest">コピー先 PDF (Destination)</label>
+        <div class="file-drop" id="dest-drop">
+          <input type="file" id="dest" name="dest" accept=".pdf" required>
+          <span class="file-placeholder">ファイルを選択またはドラッグ&ドロップ</span>
+          <span class="file-name" id="dest-name"></span>
+        </div>
+      </div>
+
+      <fieldset class="mode-group">
+        <legend>コピー対象</legend>
+        <label class="radio-label">
+          <input type="radio" name="mode" value="both" checked>
+          <span>しおりとリンク両方</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="mode" value="bookmarks">
+          <span>しおりのみ</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="mode" value="links">
+          <span>リンクのみ</span>
+        </label>
+      </fieldset>
+
+      <button type="submit" id="submit-btn">移行を実行</button>
+    </form>
+
+    <div id="progress" class="hidden">
+      <div class="spinner"></div>
+      <p>処理中...</p>
+    </div>
+
+    <div id="results" class="hidden">
+      <h2>結果</h2>
+      <table id="stats-table">
+        <tbody>
+          <tr><td>ソースPDF</td><td id="stat-source-pages"></td></tr>
+          <tr><td>コピー先PDF</td><td id="stat-dest-pages"></td></tr>
+          <tr><td>しおり</td><td id="stat-bookmarks"></td></tr>
+          <tr><td>リンク</td><td id="stat-links"></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="error" class="hidden">
+      <p id="error-message"></p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

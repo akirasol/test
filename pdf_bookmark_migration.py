@@ -10,6 +10,7 @@ PDFしおり・リンク移行ツール
 """
 
 import argparse
+import json
 import sys
 
 import fitz  # PyMuPDF
@@ -97,6 +98,8 @@ def migrate_pdf_bookmarks_and_links(
     source_path: str,
     dest_path: str,
     output_path: str,
+    copy_bookmarks: bool = True,
+    copy_links: bool = True,
 ) -> dict:
     """メイン処理: ソースPDFからしおりとリンクを抽出し、対象PDFに適用する。
 
@@ -117,16 +120,18 @@ def migrate_pdf_bookmarks_and_links(
     }
 
     # しおりの抽出と適用
-    toc = extract_bookmarks(src_doc)
-    stats["bookmarks_found"] = len(toc)
-    stats["bookmarks_applied"] = apply_bookmarks(dst_doc, toc, len(dst_doc))
+    if copy_bookmarks:
+        toc = extract_bookmarks(src_doc)
+        stats["bookmarks_found"] = len(toc)
+        stats["bookmarks_applied"] = apply_bookmarks(dst_doc, toc, len(dst_doc))
 
     # リンクの抽出と適用
-    links_by_page = extract_links(src_doc)
-    stats["links_found"] = sum(len(v) for v in links_by_page.values())
-    applied, skipped = apply_links(dst_doc, links_by_page)
-    stats["links_applied"] = applied
-    stats["links_skipped"] = skipped
+    if copy_links:
+        links_by_page = extract_links(src_doc)
+        stats["links_found"] = sum(len(v) for v in links_by_page.values())
+        applied, skipped = apply_links(dst_doc, links_by_page)
+        stats["links_applied"] = applied
+        stats["links_skipped"] = skipped
 
     # 保存
     dst_doc.save(output_path)
@@ -163,12 +168,37 @@ def main():
         help="出力先のPDFファイル (省略時は dest を上書き)",
     )
 
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--bookmarks-only",
+        action="store_true",
+        help="しおりのみコピー (リンクはコピーしない)",
+    )
+    mode_group.add_argument(
+        "--links-only",
+        action="store_true",
+        help="リンクのみコピー (しおりはコピーしない)",
+    )
+
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="結果をJSON形式で出力",
+    )
+
     args = parser.parse_args()
 
     output_path = args.output if args.output else args.dest
+    copy_bookmarks = not args.links_only
+    copy_links = not args.bookmarks_only
 
     try:
-        stats = migrate_pdf_bookmarks_and_links(args.source, args.dest, output_path)
+        stats = migrate_pdf_bookmarks_and_links(
+            args.source, args.dest, output_path,
+            copy_bookmarks=copy_bookmarks,
+            copy_links=copy_links,
+        )
     except FileNotFoundError as e:
         print(f"エラー: ファイルが見つかりません: {e}", file=sys.stderr)
         sys.exit(1)
@@ -176,8 +206,11 @@ def main():
         print(f"エラー: {e}", file=sys.stderr)
         sys.exit(1)
 
-    print_stats(stats)
-    print(f"出力: {output_path}")
+    if args.json_output:
+        print(json.dumps(stats))
+    else:
+        print_stats(stats)
+        print(f"出力: {output_path}")
 
 
 if __name__ == "__main__":
