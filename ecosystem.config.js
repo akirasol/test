@@ -8,7 +8,7 @@ module.exports = {
     max_memory_restart: '500M',
     env: {
       NODE_ENV: 'production',
-      PORT: 3000,
+      PORT: 3008,
       UPLOAD_MAX_SIZE_MB: 50,
       PYTHON_PATH: 'python3',
       SCRIPT_TIMEOUT_MS: 60000,
