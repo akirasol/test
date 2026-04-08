@@ -10,7 +10,7 @@ module.exports = {
       NODE_ENV: 'production',
       PORT: 3008,
       UPLOAD_MAX_SIZE_MB: 50,
-      PYTHON_PATH: 'python3',
+      PYTHON_PATH: 'python',
       SCRIPT_TIMEOUT_MS: 60000,
     },
   }],

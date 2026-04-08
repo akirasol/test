@@ -10,7 +10,7 @@ const app = express();
 
 const PORT = process.env.PORT || 3008;
 const UPLOAD_MAX_SIZE_MB = parseInt(process.env.UPLOAD_MAX_SIZE_MB || '50', 10);
-const PYTHON_PATH = process.env.PYTHON_PATH || 'python3';
+const PYTHON_PATH = process.env.PYTHON_PATH || 'python';
 const SCRIPT_TIMEOUT_MS = parseInt(process.env.SCRIPT_TIMEOUT_MS || '60000', 10);
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const SCRIPT_PATH = path.join(__dirname, 'pdf_bookmark_migration.py');
